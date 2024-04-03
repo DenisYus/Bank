@@ -13,7 +13,7 @@ import static org.mockito.Mockito.*;
 class MoneyTransferServiceTest {
     @Test
     public void transfer() throws InterruptedException {
-        //given
+        // given
         BankAccountRepository repository = new BankAccountRepository();
         Validator validation = new Validator();
         BankAccount account1 = new BankAccount(1L, 1000L);
@@ -21,21 +21,19 @@ class MoneyTransferServiceTest {
         repository.addBankAccount(account1);
         repository.addBankAccount(account2);
 
-        TransferService transferService = new MoneyTransferService(repository, new BalanceChangesFactory() {
-            @Override
-            public BalanceChanges createBalanceChanges(BankAccount account) {
-                return new BalanceTransactions(account, validation) ;
-            }
-        });
-        //when
-        Thread t1 = new Thread(() -> {
+        TransferService transferService = new MoneyTransferService(repository, account -> new BalanceTransactions(account, validation));
+
+        // when
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        executor.submit(() -> {
             try {
                 transferService.transfer(1L, 2L, 200L);
             } catch (InsufficientFoundsException e) {
                 throw new RuntimeException(e);
             }
         });
-        Thread t2 = new Thread(() -> {
+        executor.submit(() -> {
             try {
                 transferService.transfer(2L, 1L, 50L);
             } catch (InsufficientFoundsException e) {
@@ -43,16 +41,13 @@ class MoneyTransferServiceTest {
             }
         });
 
-        t1.start();
-        t2.start();
-        t1.join();
-        t2.join();
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
 
-        //then
+        // then
         assertEquals(850, repository.getBankAccount(1L).getBalance());
         assertEquals(650, repository.getBankAccount(2L).getBalance());
     }
-
 
 
 }
